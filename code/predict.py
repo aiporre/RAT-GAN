@@ -48,10 +48,20 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+def make_batch_one(data):
+    img, caption, captions_len, class_id, key = data
+    img = [torch.unsqueeze(img[0], dim=0)]
+    key = tuple([key])
+    caption = torch.tensor([caption])
+    captions_len = torch.tensor([captions_len])
+    class_id = torch.tensor([class_id])
+    return img, caption, captions_len, class_id, key
+
+
 
 def predict_one(text, text_encoder, netG, dataset, device):
-    model_dir = cfg.TRAIN.NET_G
-    split_dir = 'valid'
+    model_dir = '/tmp' # cfg.TRAIN.NET_G
+    split_dir = 'generated'
     # Build and load the generator
     # for coco wrap netG with DataParallel because it's trained on two 3090
     #    netG = nn.DataParallel(netG).cuda()
@@ -66,43 +76,84 @@ def predict_one(text, text_encoder, netG, dataset, device):
     s_tmp = model_dir
     save_dir = '%s/%s' % (s_tmp, split_dir)
     mkdir_p(save_dir)
-    cnt = 0
-    for i in range(10):  # (cfg.TEXT.CAPTIONS_PER_IMAGE):
-        for step, data in enumerate(dataloader, 0):
-            imags, captions, cap_lens, class_ids, keys = prepare_data(data)
-            cnt += batch_size
-            if step % 100 == 0:
-                print('step: ', step)
-            # if step > 50:
-            #     break
-            hidden = text_encoder.init_hidden(batch_size)
-            # words_embs: batch_size x nef x seq_len
-            # sent_emb: batch_size x nef
-            words_embs, sent_emb = text_encoder(captions, cap_lens, hidden)
-            words_embs, sent_emb = words_embs.detach(), sent_emb.detach()
-            #######################################################
-            # (2) Generate fake images
-            ######################################################
-            with torch.no_grad():
-                noise = torch.randn(batch_size, 100)
-                noise=noise.to(device)
-                netG.lstm.init_hidden(noise)
-                
-                fake_imgs = netG(noise,sent_emb)
-            for j in range(batch_size):
-                s_tmp = '%s/single/%s' % (save_dir, keys[j])
-                folder = s_tmp[:s_tmp.rfind('/')]
-                if not os.path.isdir(folder):
-                    print('Make a new folder: ', folder)
-                    mkdir_p(folder)
-                im = fake_imgs[j].data.cpu().numpy()
-                # [-1, 1] --> [0, 255]
-                im = (im + 1.0) * 127.5
-                im = im.astype(np.uint8)
-                im = np.transpose(im, (1, 2, 0))
-                im = Image.fromarray(im)
-                fullpath = '%s_%3d.png' % (s_tmp,i)
-                im.save(fullpath)
+
+    if text is None or isinstance(text, int):
+        # generate a random text from the dataset length
+        if isinstance(text, int):
+            data_index = text % len(dataset)
+        else:
+            data_index = random.randint(0, len(dataset))
+        data = dataset[data_index]
+        data = make_batch_one(data)
+        img, cap, cap_len, cls_id, key = prepare_data(data)
+        text = dataset.caption2text(cap.flatten().detach().cpu().numpy().tolist())
+        hidden = text_encoder.init_hidden(batch_size)
+        # words_embs: batch_size x nef x seq_len
+        # sent_emb: batch_size x nef
+        words_emb, sent_emb = text_encoder(cap, cap_len, hidden)
+        words_emb, sent_emb = words_emb.detach(), sent_emb.detach()
+        with torch.no_grad():
+            noise = torch.randn(batch_size, 100)
+            noise = noise.to(device)
+            netG.lstm.init_hidden(noise)
+            fake_img = netG(noise, sent_emb)
+        s_tmp = '%s/%s' % (save_dir, key[0])
+        folder = s_tmp[:s_tmp.rfind('/')]
+        if not os.path.isdir(folder):
+            print('Make a new folder: ', folder)
+            mkdir_p(folder)
+        im = fake_img[0].data.cpu().numpy()
+        # [-1, 1] --> [0, 255]
+        im = (im + 1.0) * 127.5
+        im = im.astype(np.uint8)
+        im = np.transpose(im, (1, 2, 0))
+        im = Image.fromarray(im)
+        fullpath = '%s.png' % (s_tmp)
+        im.save(fullpath)
+        print('out1:', fullpath)
+        print('out2:', text)
+        print('out3:', dataset.class_id_inverted[cls_id[0]])
+        print('out4:', key)
+
+
+
+    # cnt = 0
+    # for i in range(10):  # (cfg.TEXT.CAPTIONS_PER_IMAGE):
+    #     for step, data in enumerate(dataloader, 0):
+    #         imags, captions, cap_lens, class_ids, keys = prepare_data(data)
+    #         cnt += batch_size
+    #         if step % 100 == 0:
+    #             print('step: ', step)
+    #         # if step > 50:
+    #         #     break
+    #         hidden = text_encoder.init_hidden(batch_size)
+    #         # words_embs: batch_size x nef x seq_len
+    #         # sent_emb: batch_size x nef
+    #         words_embs, sent_emb = text_encoder(captions, cap_lens, hidden)
+    #         words_embs, sent_emb = words_embs.detach(), sent_emb.detach()
+    #         #######################################################
+    #         # (2) Generate fake images
+    #         ######################################################
+    #         with torch.no_grad():
+    #             noise = torch.randn(batch_size, 100)
+    #             noise=noise.to(device)
+    #             netG.lstm.init_hidden(noise)
+    #
+    #             fake_imgs = netG(noise,sent_emb)
+    #         for j in range(batch_size):
+    #             s_tmp = '%s/single/%s' % (save_dir, keys[j])
+    #             folder = s_tmp[:s_tmp.rfind('/')]
+    #             if not os.path.isdir(folder):
+    #                 print('Make a new folder: ', folder)
+    #                 mkdir_p(folder)
+    #             im = fake_imgs[j].data.cpu().numpy()
+    #             # [-1, 1] --> [0, 255]
+    #             im = (im + 1.0) * 127.5
+    #             im = im.astype(np.uint8)
+    #             im = np.transpose(im, (1, 2, 0))
+    #             im = Image.fromarray(im)
+    #             fullpath = '%s_%3d.png' % (s_tmp,i)
+    #             im.save(fullpath)
 
 
 
@@ -195,40 +246,38 @@ def predict_one(text, text_encoder, netG, dataset, device):
     # return count
 
 
+def merge_from_file_cfg(cfg_file):
+    if cfg_file is not None:
+        cfg_from_file(cfg_file)
 
-
-if __name__ == "__main__":
-    args = parse_args()
-    if args.cfg_file is not None:
-        cfg_from_file(args.cfg_file)
-
-    if args.gpu_id == -1:
+def build_model(gpu_id=-1, data_dir='', manualSeed=100):
+    if gpu_id == -1:
         cfg.CUDA = False
     else:
-        cfg.GPU_ID = args.gpu_id
+        cfg.GPU_ID = gpu_id
 
-    if args.data_dir != '':
-        cfg.DATA_DIR = args.data_dir
+    if data_dir != '':
+        cfg.DATA_DIR = data_dir
     print('Using config:')
     pprint.pprint(cfg)
 
     if not cfg.TRAIN.FLAG:
-        args.manualSeed = 100
-    elif args.manualSeed is None:
-        args.manualSeed = 100
-        #args.manualSeed = random.randint(1, 10000)
-    print("seed now is : ",args.manualSeed)
-    random.seed(args.manualSeed)
-    np.random.seed(args.manualSeed)
-    torch.manual_seed(args.manualSeed)
+        manualSeed = 100
+    elif manualSeed is None:
+        manualSeed = 100
+        # manualSeed = random.randint(1, 10000)
+    print("seed now is : ", manualSeed)
+    random.seed(manualSeed)
+    np.random.seed(manualSeed)
+    torch.manual_seed(manualSeed)
     if cfg.CUDA:
-        torch.cuda.manual_seed_all(args.manualSeed)
+        torch.cuda.manual_seed_all(manualSeed)
 
     ##########################################################################
     now = datetime.datetime.now(dateutil.tz.tzlocal())
     timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
     output_dir = '../output/%s_%s_%s' % \
-        (cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
+                 (cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
     if torch.cuda.is_available():
         torch.cuda.set_device(cfg.GPU_ID)
     cudnn.benchmark = True
@@ -241,17 +290,17 @@ if __name__ == "__main__":
         transforms.RandomCrop(imsize),
         transforms.RandomHorizontalFlip()])
     dataset = TextDataset(cfg.DATA_DIR, 'test',
-                            base_size=cfg.TREE.BASE_SIZE,
-                            transform=image_transform)
+                          base_size=cfg.TREE.BASE_SIZE,
+                          transform=image_transform)
     print(dataset.n_words, dataset.embeddings_num)
     print('----> the dataset is:  ', dataset)
     assert dataset, "dataset has zero elements, check the captions.pkl file and the data directory"
-   # # validation data #
+    # # validation data #
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     lstm = CustomLSTM(256, 256)
 
-    netG = NetG(cfg.TRAIN.NF, 100,lstm).to(device)
+    netG = NetG(cfg.TRAIN.NF, 100, lstm).to(device)
     netD = NetD(cfg.TRAIN.NF).to(device)
 
     text_encoder = RNN_ENCODER(dataset.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
@@ -262,9 +311,14 @@ if __name__ == "__main__":
 
     for p in text_encoder.parameters():
         p.requires_grad = False
-    text_encoder.eval()    
+    text_encoder.eval()
+    return text_encoder, netG, dataset, device
 
+if __name__ == "__main__":
+    args = parse_args()
+    merge_from_file_cfg(args.cfg_file)
+    text_encoder, netG, dataset, device = build_model(gpu_id=args.gpu_id, data_dir=args.data_dir, manualSeed=args.manualSeed)
     ##########################################################################
     # predict one image from text
-    text = "this flower is white with many petals"
+    text = 1 # "this flower is white with many petals"
     predict_one(text, text_encoder, netG, dataset, device)  # generate images for the whole valid dataset

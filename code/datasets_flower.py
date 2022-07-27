@@ -41,7 +41,7 @@ def prepare_data(data):
         else:
             real_imgs.append(Variable(imgs[i]))
 
-    captions = captions[sorted_cap_indices].squeeze()
+    captions = captions[sorted_cap_indices].squeeze(-1)
     class_ids = class_ids[sorted_cap_indices].numpy()
     # sent_indices = sent_indices[sorted_cap_indices]
     keys = [keys[i] for i in sorted_cap_indices.numpy()]
@@ -115,6 +115,7 @@ class TextDataset(data.Dataset):
 
 
         self.class_id = self.load_class_id(split_dir, len(self.filenames['img']))
+        self.class_id_inverted = {v: k for k, v in self.class_id.items()}
         self.number_example = len(self.filenames['img'])
 
 
@@ -297,6 +298,39 @@ class TextDataset(data.Dataset):
             x[:, 0] = sent_caption[ix]
             x_len = cfg.TEXT.WORDS_NUM
         return x, x_len
+
+    def caption2text(self, caption):
+        # transform a list of indices into a list of words
+        # caption: a list of indices
+        # return: a list of words
+        words = []
+        for w in caption:
+            if w == 0:
+                break
+            # append the word to the list if exists in ixtoword dictionary
+            if w in self.ixtoword:
+                words.append(self.ixtoword[w])
+            else:
+                words.append('<unk>')
+        return words
+
+    def text2caption(self, text):
+        # transform a list of words into a list of indices
+        # text: a list of words
+        # return: a list of indices
+        caption = []
+        warning_one = False
+        for w in text:
+            if w == '<end>':
+                break
+            if w in self.wordtoix:
+                caption.append(self.wordtoix[w])
+            else:
+                if not warning_one:
+                    print('Warning: %s not in recognized word' % w)
+                    warning_one = True
+        return caption
+
 
     def __getitem__(self, index):
         #
