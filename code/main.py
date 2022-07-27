@@ -3,11 +3,11 @@ from __future__ import print_function
 from miscc.utils import mkdir_p
 from miscc.config import cfg, cfg_from_file
 
-from datasets import TextDataset
-from datasets import prepare_data
+#from datasets import TextDataset
+#from datasets import prepare_data
 #for flower dataset, please use the fllowing dataset files
-#from datasets_flower import TextDataset
-#from datasets_flower import prepare_data
+from datasets_flower import TextDataset
+from datasets_flower import prepare_data
 from DAMSM import RNN_ENCODER,CustomLSTM
 
 import os
@@ -56,8 +56,12 @@ def sampling(text_encoder, netG, dataloader,device):
     # Build and load the generator
     # for coco wrap netG with DataParallel because it's trained on two 3090
     #    netG = nn.DataParallel(netG).cuda()
-    netG.load_state_dict(torch.load('../models/%s/netG_500.pth'%(cfg.CONFIG_NAME)))
-    
+    # get device and load model in correct map_location
+    if torch.cuda.is_available():
+        netG.load_state_dict(torch.load('../models/%s/netG_500.pth'%(cfg.CONFIG_NAME)))
+    else:
+        netG.load_state_dict(torch.load('../models/%s/netG_500.pth'%(cfg.CONFIG_NAME), map_location=torch.device('cpu')))
+
     netG.eval()
 
     batch_size = cfg.TRAIN.BATCH_SIZE
@@ -227,8 +231,8 @@ if __name__ == "__main__":
     timestamp = now.strftime('%Y_%m_%d_%H_%M_%S')
     output_dir = '../output/%s_%s_%s' % \
         (cfg.DATASET_NAME, cfg.CONFIG_NAME, timestamp)
-
-    torch.cuda.set_device(cfg.GPU_ID)
+    if torch.cuda.is_available():
+        torch.cuda.set_device(cfg.GPU_ID)
     cudnn.benchmark = True
 
     # Get data loader ##################################################
@@ -243,6 +247,7 @@ if __name__ == "__main__":
                                 base_size=cfg.TREE.BASE_SIZE,
                                 transform=image_transform)
         print(dataset.n_words, dataset.embeddings_num)
+        print('----> the dataset is:  ', dataset)
         assert dataset
         dataloader = torch.utils.data.DataLoader(
             dataset, batch_size=batch_size, drop_last=True,
@@ -268,7 +273,8 @@ if __name__ == "__main__":
     text_encoder = RNN_ENCODER(dataset.n_words, nhidden=cfg.TEXT.EMBEDDING_DIM)
     state_dict = torch.load(cfg.TEXT.DAMSM_NAME, map_location=lambda storage, loc: storage)
     text_encoder.load_state_dict(state_dict)
-    text_encoder.cuda()
+    if torch.cuda.is_available():
+        text_encoder.cuda()
 
     for p in text_encoder.parameters():
         p.requires_grad = False

@@ -236,6 +236,8 @@ class TextDataset(data.Dataset):
                 del x
                 n_words = len(ixtoword)
                 print('Load from: ', filepath)
+        print('train_captions', train_captions[:5])
+        print('test_captions', test_captions[:5])
         if split == 'train':
             # a list of list: each list contains
             # the indices of words in a sentence
