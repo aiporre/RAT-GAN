@@ -1,14 +1,28 @@
 from __future__ import print_function
-
-from miscc.utils import mkdir_p
-from miscc.config import cfg, cfg_from_file
+from re import A
+try:
+    from .miscc.utils import mkdir_p
+    from .miscc.config import cfg, cfg_from_file
+except Exception as e:
+    print('error in import: ', e)
+    from miscc.utils import mkdir_p
+    from miscc.config import cfg, cfg_from_file
 
 #from datasets import TextDataset
 #from datasets import prepare_data
 #for flower dataset, please use the fllowing dataset files
-from datasets_flower import TextDataset
-from datasets_flower import prepare_data
-from DAMSM import RNN_ENCODER,CustomLSTM
+try:
+    from .datasets_flower import TextDataset
+    from .datasets_flower import prepare_data
+except Exception as e:
+    print('error in import: ', e)
+    from datasets_flower import TextDataset
+    from datasets_flower import prepare_data
+try:
+    from .DAMSM import RNN_ENCODER,CustomLSTM
+except Exception as e:
+    print('error in import: ', e)
+    from DAMSM import RNN_ENCODER,CustomLSTM
 
 import os
 import sys
@@ -20,6 +34,7 @@ import dateutil.tz
 import argparse
 import numpy as np
 from PIL import Image
+from glob import glob
 
 import torch
 import torch.nn as nn
@@ -27,7 +42,11 @@ import torch.optim as optim
 from torch.autograd import Variable
 import torch.backends.cudnn as cudnn
 import torchvision.transforms as transforms
-from model import NetG,NetD
+try:
+    from .model import NetG,NetD
+except Exception as e:
+    print('error in import: ', e)
+    from model import NetG,NetD
 import torchvision.utils as vutils
 
 dir_path = (os.path.abspath(os.path.join(os.path.realpath(__file__), './.')))
@@ -66,10 +85,22 @@ def predict_one(text, text_encoder, netG, dataset, device):
     # for coco wrap netG with DataParallel because it's trained on two 3090
     #    netG = nn.DataParallel(netG).cuda()
     # get device and load model in correct map_location
-    if torch.cuda.is_available():
-        netG.load_state_dict(torch.load('../models/%s/netG_500.pth'%(cfg.CONFIG_NAME)))
+    # try to find the file named "models/%s/netG_500.pth" % cfg.CONFIG_NAME in current directory
+    model_path = 'models/%s/netG_500.pth'%(cfg.CONFIG_NAME)
+    if os.path.exists(os.path.join('..', model_path)):
+        model_path = os.path.join('..', model_path)
     else:
-        netG.load_state_dict(torch.load('../models/%s/netG_500.pth'%(cfg.CONFIG_NAME), map_location=torch.device('cpu')))
+        from pathlib import Path
+        files = list(Path.cwd().rglob('netG_500.pth'))
+
+        if len(files) == 0:
+            raise FileNotFoundError('No model path trained found')
+        model_path = files[0]
+            
+    if torch.cuda.is_available():
+        netG.load_state_dict(torch.load(model_path))
+    else:
+        netG.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
 
     netG.eval()
     batch_size = 1 # cfg.TRAIN.BATCH_SIZE
@@ -114,6 +145,7 @@ def predict_one(text, text_encoder, netG, dataset, device):
         print('out2:', text)
         print('out3:', dataset.class_id_inverted[cls_id[0]])
         print('out4:', key)
+        return fullpath, text, dataset.class_id_inverted[cls_id[0]], key
 
 
 
@@ -289,6 +321,8 @@ def build_model(gpu_id=-1, data_dir='', manualSeed=100):
         transforms.Resize(int(imsize * 76 / 64)),
         transforms.RandomCrop(imsize),
         transforms.RandomHorizontalFlip()])
+    import os
+    print('current directy is : ', os.getcwd())
     dataset = TextDataset(cfg.DATA_DIR, 'test',
                           base_size=cfg.TREE.BASE_SIZE,
                           transform=image_transform)

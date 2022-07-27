@@ -1,7 +1,7 @@
 CONFIG_NAME: 'flower_lstm_4aff'
 
 DATASET_NAME: 'birds'
-DATA_DIR: '../data/flower/'
+DATA_DIR: './generator_ai/data/flower/'
 
 CUDA: False
 GPU_ID: 0
@@ -26,4 +26,4 @@ TRAIN:
 TEXT:
     EMBEDDING_DIM: 256
     CAPTIONS_PER_IMAGE: 10
-    DAMSM_NAME: '../flower/text_encoder250.pth'
+    DAMSM_NAME: './generator_ai/flower/text_encoder250.pth'

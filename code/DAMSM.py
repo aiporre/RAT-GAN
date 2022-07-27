@@ -8,8 +8,11 @@ import torch.nn.functional as F
 import math
 
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-
-from miscc.config import cfg
+try:
+    from .miscc.config import cfg
+except Exception as e:
+    print('import error:', e)
+    from miscc.config import cfg
 
 
 # ############## Text2Image Encoder-Decoder #######

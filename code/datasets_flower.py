@@ -6,7 +6,11 @@ from __future__ import unicode_literals
 
 from nltk.tokenize import RegexpTokenizer
 from collections import defaultdict
-from miscc.config import cfg
+try:
+    from .miscc.config import cfg
+except Exception as e:
+    print(' Erro importing cfg.py', e)
+    from miscc.config import cfg
 
 import torch
 import torch.utils.data as data
@@ -114,7 +118,7 @@ class TextDataset(data.Dataset):
         self.dict_name2cap = {}
 
 
-        self.class_id = self.load_class_id(split_dir, len(self.filenames['img']))
+        self.class_id = self.load_class_id(data_dir, len(self.filenames['img']))
         self.class_id_inverted = {v: k for k, v in self.class_id.items()}
         self.number_example = len(self.filenames['img'])
 
@@ -258,7 +262,11 @@ class TextDataset(data.Dataset):
         return filenames, captions, ixtoword, wordtoix, n_words
 
     def load_class_id(self, data_dir, total_num):
-        with open('../data/cat_to_name.json', 'r') as f:
+        filepath = "../data/cat_to_name.json"
+        if not os.path.exists(filepath):
+            pkl_name = os.path.basename(filepath)
+            filepath = os.path.join(data_dir,'..', pkl_name)
+        with open(filepath, 'r') as f:
             cat_to_name = json.load(f)   
         dic_class=[]
         dic_classs={}
@@ -271,6 +279,9 @@ class TextDataset(data.Dataset):
 
     def load_filenames(self, data_dir, split):
         filepath = '../data/flower_cat_dic.pkl'
+        if not os.path.exists(filepath):
+            pkl_name = os.path.basename(filepath)
+            filepath = os.path.join(data_dir,'..', pkl_name)
         if os.path.isfile(filepath):
             with open(filepath, 'rb') as f:
                 filenames = pickle.load(f)
